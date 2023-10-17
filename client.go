@@ -239,9 +239,9 @@ func (c *Client) validateTicket(ticket string, service *http.Request) error {
 // A cookie is set on the response if one is not provided with the request.
 // Validates the ticket if the URL parameter is provided.
 func (c *Client) getSession(w http.ResponseWriter, r *http.Request) {
-	cookie := c.getCookie(w, r)
+	sessionCookie := c.getCookie(w, r)
 
-	if s, ok := c.sessions.Get(cookie.Value); ok {
+	if s, ok := c.sessions.Get(sessionCookie.Value); ok {
 		if t, err := c.tickets.Read(s); err == nil {
 			if glog.V(1) {
 				glog.Infof("Re-used ticket %s for %s", s, t.User)
@@ -258,7 +258,7 @@ func (c *Client) getSession(w http.ResponseWriter, r *http.Request) {
 				glog.Infof("Clearing ticket %s, no longer exists in ticket store", s)
 			}
 
-			clearCookie(w, cookie)
+			//clearCookie(w, sessionCookie)
 		}
 	}
 
@@ -270,7 +270,7 @@ func (c *Client) getSession(w http.ResponseWriter, r *http.Request) {
 			return // allow ServeHTTP()
 		}
 
-		c.setSession(cookie.Value, ticket)
+		c.setSession(sessionCookie.Value, ticket)
 
 		if t, err := c.tickets.Read(ticket); err == nil {
 			if glog.V(1) {
@@ -288,7 +288,8 @@ func (c *Client) getSession(w http.ResponseWriter, r *http.Request) {
 				glog.Infof("Clearing ticket %s, no longer exists in ticket store", ticket)
 			}
 
-			clearCookie(w, cookie)
+			//clearCookie(w, sessionCookie)
+			c.sessions.Set(sessionCookie.Value, "")
 		}
 	}
 }
@@ -366,7 +367,7 @@ func (c *Client) clearSession(w http.ResponseWriter, r *http.Request) {
 		c.deleteSession(cookie.Value)
 	}
 
-	clearCookie(w, cookie)
+	//clearCookie(w, cookie)
 }
 
 // deleteSession removes the session from the client
