@@ -374,3 +374,34 @@ func (c *Client) clearSession(w http.ResponseWriter, r *http.Request) {
 func (c *Client) deleteSession(id string) {
 	c.sessions.Delete(id)
 }
+
+func (c *Client) LoginHandlerFunc(w http.ResponseWriter, r *http.Request) {
+	var refUrl string = "/"
+	referer := r.Header.Get("Referer")
+	if referer != "" {
+		refUrlParsed, err := url.Parse(referer)
+		if err == nil && refUrlParsed.Host == r.Host {
+			refUrl = referer
+		}
+	}
+	if !IsAuthenticated(r) {
+		refUrlCookie := &http.Cookie{
+			Name:  "_cas_ref_url",
+			Value: referer,
+		}
+		slog.InfoContext(r.Context(), "cas: user is not authenticated. setting referer url.", "ref_url", refUrl)
+		http.SetCookie(w, refUrlCookie)
+		c.RedirectToLogin(w, r)
+	} else {
+		if refUrlCookie, err := r.Cookie("_cas_ref_url"); err == nil {
+			refUrl = refUrlCookie.Value
+			refUrlCookie.MaxAge = -1
+			slog.InfoContext(r.Context(), "cas: user is authenticated. redirecting to referer url set from cookie.", "ref_url", refUrl)
+			http.SetCookie(w, refUrlCookie)
+		} else {
+			slog.InfoContext(r.Context(), "cas: user is authenticated. redirecting to root url.")
+			refUrl = "/"
+		}
+		http.Redirect(w, r, refUrl, http.StatusFound)
+	}
+}
