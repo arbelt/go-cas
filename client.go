@@ -3,6 +3,7 @@ package cas
 import (
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -242,51 +243,38 @@ func (c *Client) getSession(w http.ResponseWriter, r *http.Request) {
 	sessionCookie := c.getCookie(w, r)
 
 	if s, ok := c.sessions.Get(sessionCookie.Value); ok {
+		slog.InfoContext(r.Context(), "cas: found session", "session_id", sessionCookie.Value, "ticket", s)
 		if t, err := c.tickets.Read(s); err == nil {
-			if glog.V(1) {
-				glog.Infof("Re-used ticket %s for %s", s, t.User)
-			}
+
+			slog.InfoContext(r.Context(), "cas: re-used ticket", "ticket", s, "user", t.User)
 
 			setAuthenticationResponse(r, t)
 			return
 		} else {
-			if glog.V(2) {
-				glog.Infof("Ticket %v not in %T: %v", s, c.tickets, err)
-			}
+			slog.InfoContext(r.Context(), "cas: ticket not found in ticket store", "ticket", s, "error", err)
 
-			if glog.V(1) {
-				glog.Infof("Clearing ticket %s, no longer exists in ticket store", s)
-			}
-
-			//clearCookie(w, sessionCookie)
+			// clear stored ticket for session
+			c.sessions.Delete(sessionCookie.Value)
 		}
 	}
 
 	if ticket := r.URL.Query().Get("ticket"); ticket != "" {
+		c.sessions.Set(sessionCookie.Value, ticket)
+
 		if err := c.validateTicket(ticket, r); err != nil {
-			if glog.V(2) {
-				glog.Infof("Error validating ticket: %v", err)
-			}
+			slog.InfoContext(r.Context(), "cas: ticket validation failed", "ticket", ticket, "error", err)
 			return // allow ServeHTTP()
 		}
 
-		c.setSession(sessionCookie.Value, ticket)
+		//c.setSession(sessionCookie.Value, ticket)
 
 		if t, err := c.tickets.Read(ticket); err == nil {
-			if glog.V(1) {
-				glog.Infof("Validated ticket %s for %s", ticket, t.User)
-			}
+			slog.InfoContext(r.Context(), "cas: validated ticket", "ticket", ticket, "user", t.User)
 
 			setAuthenticationResponse(r, t)
 			return
 		} else {
-			if glog.V(2) {
-				glog.Infof("Ticket %v not in %T: %v", ticket, c.tickets, err)
-			}
-
-			if glog.V(1) {
-				glog.Infof("Clearing ticket %s, no longer exists in ticket store", ticket)
-			}
+			slog.InfoContext(r.Context(), "cas: ticket not found in ticket store", "ticket", ticket, "error", err)
 
 			//clearCookie(w, sessionCookie)
 			c.sessions.Set(sessionCookie.Value, "")
@@ -296,8 +284,25 @@ func (c *Client) getSession(w http.ResponseWriter, r *http.Request) {
 
 // getCookie finds or creates the session cookie on the response.
 func (c *Client) getCookie(w http.ResponseWriter, r *http.Request) *http.Cookie {
-	cookie, err := r.Cookie(sessionCookieName)
-	if err != nil {
+	//cookie, err := r.Cookie(sessionCookieName)
+	var cookie *http.Cookie
+	cookies := r.Cookies()
+	for _, ck := range cookies {
+		if ck.Name == sessionCookieName {
+			slog.InfoContext(r.Context(), "cas: found cookie", "cookie", ck)
+			if c.cookie.Path == "" || ck.Path == "" {
+				cookie = ck
+				break
+			}
+			if ck.Path == c.cookie.Path {
+				slog.InfoContext(r.Context(), "cas: found cookie with matching path", "cookie", ck, "path", c.cookie.Path)
+				cookie = ck
+				break
+			}
+			slog.InfoContext(r.Context(), "cas: found cookie with non-matching path", "cookie", ck, "path", ck.Path)
+		}
+	}
+	if cookie == nil {
 		// NOTE: Intentionally not enabling HttpOnly so the cookie can
 		//       still be used by Ajax requests.
 		cookie = &http.Cookie{
@@ -311,9 +316,7 @@ func (c *Client) getCookie(w http.ResponseWriter, r *http.Request) *http.Cookie 
 			SameSite: c.cookie.SameSite,
 		}
 
-		if glog.V(2) {
-			glog.Infof("Setting %v cookie with value: %v", cookie.Name, cookie.Value)
-		}
+		slog.InfoContext(r.Context(), "cas: no cookie found; created cookie", "cookie", cookie)
 
 		r.AddCookie(cookie) // so we can find it later if required
 		http.SetCookie(w, cookie)
