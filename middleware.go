@@ -1,6 +1,7 @@
 package cas
 
 import (
+	"github.com/go-chi/httplog"
 	"log/slog"
 	"net/http"
 )
@@ -10,6 +11,9 @@ import (
 func (c *Client) Handler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		slog.InfoContext(r.Context(), "cas: handling request", "method", r.Method, "url", r.URL)
+		oplog := httplog.LogEntry(r.Context())
+
+		oplog.Info().Str("method", r.Method).Str("url", r.URL.String()).Msg("cas: handling request")
 
 		setClient(r, c)
 

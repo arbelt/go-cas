@@ -36,9 +36,7 @@ type Client struct {
 
 // NewClient creates a Client with the provided Options.
 func NewClient(options *Options) *Client {
-	if glog.V(2) {
-		glog.Infof("cas: new client with options %v", options)
-	}
+	slog.Info("cas: new client with options", "options", options)
 
 	var tickets TicketStore
 	if options.Store != nil {
